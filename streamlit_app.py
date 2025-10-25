@@ -1,5 +1,5 @@
 # app.py
-import os, io, json, uuid
+import os, io, json
 import numpy as np
 import streamlit as st
 from openai import OpenAI
@@ -34,33 +34,19 @@ html, body, [data-testid="stAppViewContainer"]{
   color:var(--ink);
   font-family:Pretendard,Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,"Noto Sans KR","Malgun Gothic",sans-serif;
 }
-/* ✅ 상단 헤더(Share/Star 등)에 가리지 않도록 여백 */
+/* ✅ 상단 고정 헤더에 가리지 않도록 여백 */
 .block-container{ padding-top:6rem !important; padding-bottom:2.5rem !important; }
 
 /* 사이드바 */
-[data-testid="stSidebar"]{
-  background:var(--brand)!important; border-right:1px solid rgba(0,0,0,.12);
-}
+[data-testid="stSidebar"]{ background:var(--brand)!important; border-right:1px solid rgba(0,0,0,.12); }
 [data-testid="stSidebar"] *{ color:#1d1d1d !important; }
-.sidebar-chip{
-  font-size:12px; opacity:.8; margin-bottom:.25rem;
-}
-.history-item button{
-  justify-content:flex-start;
-  border-radius:12px !important;
-  border:1px solid rgba(0,0,0,.15) !important;
-  background:rgba(255,255,255,.4) !important;
-}
-.history-item-active button{
-  background:#fff !important;
-  border:1.5px solid rgba(0,0,0,.3) !important;
-}
 
 /* 카드/배지/행 */
 .card{ background:var(--card); border:1px solid var(--line); border-radius:var(--r-xl);
   box-shadow:0 8px 20px rgba(0,0,0,.05); padding:16px 18px; }
 .badge{ display:inline-flex; gap:6px; align-items:center; background:var(--muted);
   border:1px solid var(--line); border-radius:999px; padding:4px 10px; font-size:12px; color:#444; }
+.header{ display:flex; align-items:center; justify-content:space-between; gap:12px; }
 
 /* 입력 */
 textarea{ font-size:18px !important; line-height:1.55 !important; }
@@ -76,68 +62,40 @@ textarea{ font-size:18px !important; line-height:1.55 !important; }
 /* popover 메뉴 버튼 넓게 */
 [data-testid="stPopoverContent"] .stButton>button{ width:100%; }
 
-/* ✅ 메인 화면에 우연히 생기는 text_input(빈 흰 박스) 숨김 */
-[data-testid="stAppViewContainer"] [data-testid="stTextInput"]{ display:none !important; }
-/* ✅ 사이드바의 API Key 입력은 다시 표시 */
-[data-testid="stSidebar"] [data-testid="stTextInput"]{ display:block !important; }
-
-/* ✅ file_uploader 라벨/빈 줄 제거 */
-[data-testid="stFileUploader"] label,
-[data-testid="stFileUploader"] > div:first-child{ display:none !important; }
-[data-testid="stFileUploader"]{ margin-top:-0.5rem !important; }
+/* ✅ 불필요한 상단 빈 입력(일부 위젯 라벨 placeholder) 제거 */
+div[data-testid="stTextInput"] > div:first-child { display:none !important; }
+div[data-testid="stTextInput"] input { border:none !important; background:none !important; box-shadow:none !important; }
 </style>
 """, unsafe_allow_html=True)
 
 # ================= 세션 기본값 =================
-# Multi-conversation store
-if "conversations" not in st.session_state:
-    st.session_state.conversations = []  # list of {"id":str,"title":str,"messages":[...]}
-if "active_id" not in st.session_state:
-    # 첫 대화 하나 만들기
-    st.session_state.active_id = str(uuid.uuid4())
-    st.session_state.conversations.append({
-        "id": st.session_state.active_id,
-        "title": "새 대화",
-        "messages": []
-    })
-
-def get_active_convo():
-    for c in st.session_state.conversations:
-        if c["id"] == st.session_state.active_id:
-            return c
-    return None
-
-# For backward compatibility of single-thread helpers:
-if "has_system" not in st.session_state:
+if "messages" not in st.session_state:
+    st.session_state.messages = []           # [{"role":"system|user|assistant","content":...}]
     st.session_state.has_system = False
-if "rag_ready" not in st.session_state:
-    st.session_state.rag_ready = False
-if "rag_chunks" not in st.session_state:
-    st.session_state.rag_chunks = []
-if "rag_embeds" not in st.session_state:
-    st.session_state.rag_embeds = None
+st.session_state.setdefault("rag_ready", False)
+st.session_state.setdefault("rag_chunks", [])
+st.session_state.setdefault("rag_embeds", None)    # np.array(N,D)
 st.session_state.setdefault("rag_model", "text-embedding-3-small")
 st.session_state.setdefault("use_rag", False)
 st.session_state.setdefault("show_upload", False)
 
 # ================= 도우미 =================
 def ensure_system_message(prompt_text: str):
-    convo = get_active_convo()
-    msgs = convo["messages"]
-    if not msgs or msgs[0].get("role") != "system":
-        msgs.insert(0, {"role":"system","content":prompt_text})
+    if not st.session_state.has_system:
+        st.session_state.messages.insert(0, {"role":"system","content":prompt_text})
+        st.session_state.has_system = True
     else:
-        msgs[0]["content"] = prompt_text
+        st.session_state.messages[0]["content"] = prompt_text
 
 def trim_history(max_turns:int):
-    convo = get_active_convo()
-    msgs = convo["messages"]
+    msgs = st.session_state.messages
     if not msgs: return
     sys = msgs[0] if msgs and msgs[0]["role"]=="system" else None
     body = msgs[1:] if sys else msgs[:]
     limit = max_turns*2
-    if len(body) > limit: body = body[-limit:]
-    convo["messages"] = ([sys] if sys else []) + body
+    if len(body) > limit:
+        body = body[-limit:]
+    st.session_state.messages = ([sys] if sys else []) + body
 
 def extract_text_from_pdf(file_bytes:bytes)->str:
     if not HAS_PYPDF2: return ""
@@ -200,10 +158,6 @@ def render_msg(role, content):
         unsafe_allow_html=True
     )
 
-def shorten_title(text: str, n:int=15)->str:
-    t = " ".join(text.strip().split())
-    return (t[:n] + "…") if len(t) > n else (t if t else "새 대화")
-
 # ================= 상단: 타이틀 + 상태/내보내기 =================
 col_title, col_badges, col_menu = st.columns([6, 3, 1])
 with col_title:
@@ -212,35 +166,13 @@ with col_menu:
     pop = st.popover("📥", use_container_width=True)
     with pop:
         st.markdown("**대화 내보내기**")
-        active = get_active_convo()
-        st.download_button("TXT로 저장", data=export_chat_as_txt(active["messages"]),
+        st.download_button("TXT로 저장", data=export_chat_as_txt(st.session_state.messages),
                            file_name="chat.txt", mime="text/plain", use_container_width=True)
-        st.download_button("JSON으로 저장", data=export_chat_as_json(active["messages"]),
+        st.download_button("JSON으로 저장", data=export_chat_as_json(st.session_state.messages),
                            file_name="chat.json", mime="application/json", use_container_width=True)
 
-# ================= 사이드바: 새 채팅 + 히스토리 + 설정 =================
+# ================= 사이드바: 설정 =================
 with st.sidebar:
-    # 새 채팅
-    st.button("➕ 새 채팅", use_container_width=True, type="primary", key="new_chat_btn")
-    if st.session_state.get("new_chat_btn"):
-        new_id = str(uuid.uuid4())
-        st.session_state.active_id = new_id
-        st.session_state.conversations.append({"id":new_id,"title":"새 대화","messages":[]})
-        # 메시지 관련 상태 초기화
-        st.session_state.has_system = False
-        st.experimental_rerun()
-
-    # 히스토리
-    st.caption("대화 히스토리")
-    for conv in reversed(st.session_state.conversations):
-        is_active = (conv["id"] == st.session_state.active_id)
-        css = "history-item-active" if is_active else "history-item"
-        if st.button(f"💬 {conv['title']}", key=f"hist_{conv['id']}", use_container_width=True, help="이 대화로 전환", type="secondary"):
-            st.session_state.active_id = conv["id"]
-            st.experimental_rerun()
-        st.markdown(f'<div class="{css}"></div>', unsafe_allow_html=True)
-
-    st.markdown("---")
     st.header("설정")
     default_key = os.environ.get("OPENAI_API_KEY") or st.secrets.get("OPENAI_API_KEY", None)
     openai_api_key = st.text_input("OpenAI API Key", type="password", value=default_key or "")
@@ -259,17 +191,13 @@ with st.sidebar:
     system_prompt = st.text_area("System prompt(세부 조정 가능)", value=preset_map[preset], height=100)
     st.markdown("---")
     max_turns_keep = st.slider("히스토리 보존 턴(질문/답변 쌍)", 5, 60, 30, 1)
-    reset = st.button("🔄 현재 대화 리셋", use_container_width=True)
-
-# 현재 대화 객체 핸들
-active = get_active_convo()
+    reset = st.button("🔄 새 대화 시작", use_container_width=True)
 
 if reset:
-    active["messages"].clear()
-    st.session_state.has_system = False
-    st.experimental_rerun()
+    st.session_state.clear()
+    st.rerun()
 
-# 상단 상태 배지
+# 상단 배지 갱신
 with col_badges:
     st.markdown(
         f'<span class="badge">Model: <b>{model}</b></span> '
@@ -281,6 +209,7 @@ with col_badges:
 if not openai_api_key:
     st.info("🔑 **사이드바에 OpenAI API Key를 입력하세요.** (없어도 UI는 사용 가능)", icon="🗝️")
 
+# 클라이언트
 client = OpenAI(api_key=openai_api_key) if openai_api_key else None
 no_key = not bool(openai_api_key)
 
@@ -348,6 +277,7 @@ if st.session_state.show_upload:
                 st.session_state.rag_embeds = vecs
                 st.session_state.rag_ready = True
                 st.success(f"인덱스 생성 완료! 청크 {len(chunks)}개")
+
     st.markdown('</div>', unsafe_allow_html=True)
 else:
     # 닫힐 때 선택 초기화
@@ -356,32 +286,20 @@ else:
     st.session_state.rag_embeds = None
 
 # ================= 히스토리 렌더링 =================
-for m in active["messages"]:
+for m in st.session_state.messages:
     if m["role"] in ("user","assistant"):
         render_msg(m["role"], m["content"])
 
-if not active["messages"]:
+if not st.session_state.messages:
     st.markdown('<div class="card">❓ 먼저 질문을 입력해 보세요. 예) "이 PDF의 핵심 요약 3줄"</div>', unsafe_allow_html=True)
 
 # ================= 입력 & 생성/응답 =================
 user_input = st.chat_input("무엇을 도와드릴까요? (Shift+Enter 줄바꿈)")
 if user_input:
-    ensure_system_message(
-        {
-            "기본":"You are a helpful, concise assistant.",
-            "친절한 튜터":"You are a friendly tutor. Explain step-by-step with small, clear paragraphs and examples.",
-            "초간단 요약봇":"You summarize any input into 3 bullet points with the most essential facts only.",
-            "문장 다듬기(교정)":"Rewrite the user's text with improved clarity, grammar, and natural tone while preserving meaning."
-        }.get(preset, "You are a helpful, concise assistant.") if not 'system_prompt' in locals() else system_prompt
-    )
+    ensure_system_message(system_prompt)
     trim_history(max_turns_keep)
 
-    # 현재 대화에 저장
-    active["messages"].append({"role":"user","content":user_input})
-    # 제목 자동 생성(첫 사용자 메시지 기반)
-    if active["title"] == "새 대화":
-        active["title"] = shorten_title(user_input)
-
+    st.session_state.messages.append({"role":"user","content":user_input})
     render_msg("user", user_input)
 
     # RAG 컨텍스트
@@ -396,13 +314,13 @@ if user_input:
             )
 
     try:
-        call_messages = list(active["messages"])
+        call_messages = list(st.session_state.messages)
         if additional_context:
             call_messages.append({"role":"user","content":additional_context})
 
-        if not openai_api_key:
+        if no_key:
             reply = "🔒 미리보기 모드: 사이드바에 API Key를 입력하면 실제 답변을 생성합니다."
-            active["messages"].append({"role":"assistant","content":reply})
+            st.session_state.messages.append({"role":"assistant","content":reply})
             render_msg("assistant", reply)
         else:
             if stream_enable:
@@ -413,7 +331,7 @@ if user_input:
                         temperature=temperature, max_tokens=max_output_tokens, stream=True
                     )
                     response_text = st.write_stream(stream)
-                active["messages"].append({"role":"assistant","content":response_text})
+                st.session_state.messages.append({"role":"assistant","content":response_text})
                 render_msg("assistant", response_text)
             else:
                 with st.spinner("생성 중…"):
@@ -423,7 +341,7 @@ if user_input:
                         temperature=temperature, max_tokens=max_output_tokens, stream=False
                     )
                 response_text = resp.choices[0].message.content
-                active["messages"].append({"role":"assistant","content":response_text})
+                st.session_state.messages.append({"role":"assistant","content":response_text})
                 render_msg("assistant", response_text)
                 if getattr(resp,"usage",None):
                     st.markdown(
