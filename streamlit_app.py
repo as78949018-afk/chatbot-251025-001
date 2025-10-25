@@ -21,7 +21,7 @@ except Exception:
 # 기본 세팅
 # ----------------------------
 st.set_page_config(page_title="💬 나의 첫번째 Chatbot", page_icon="💬", layout="wide")
-st.title("💬 Chatbot (All-in-One)")
+st.title("💬 나의 첫번째 Chatbot")
 
 with st.expander("설명 보기", expanded=False):
     st.markdown(
