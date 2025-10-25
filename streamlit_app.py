@@ -240,24 +240,7 @@ st.markdown("""
 }
 </style>
 """, unsafe_allow_html=True)
-# --- RAG 한 줄 툴바: 토글(왼쪽) · 버튼(오른쪽) ---
-left, right = st.columns([3, 2])  # 좌우 비율은 취향대로 조정 가능
 
-with left:
-    use_rag = st.toggle(
-        "RAG 사용",
-        value=False,
-        help="켜면 업로드한 파일 내용이 답변 컨텍스트로 사용됩니다."
-    )
-
-with right:
-    # 오른쪽 컬럼 내부에 보조 컬럼을 만들어 '오른쪽 끝'에 버튼 배치
-    _pad, btn_col = st.columns([1, 1])
-    with btn_col:
-        rebuild = st.button("📚 인덱스 생성/재생성", use_container_width=True)
-
-# --- 한 줄·양끝 정렬 툴바 (토글 왼쪽 / 버튼 오른쪽) ---
-st.markdown('<div class="rag-card"><div class="rag-toolbar">', unsafe_allow_html=True)
 
 # 왼쪽: 토글
 use_rag = st.toggle(
