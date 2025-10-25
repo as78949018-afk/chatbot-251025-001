@@ -26,6 +26,9 @@ except Exception:
 st.set_page_config(page_title="💬 나의 첫번째 Chatbot", page_icon="💬", layout="wide")
 st.title("💬 나의 첫번째 Chatbot")
 
+if not openai_api_key:
+    st.info("🔑 **사이드바에 OpenAI API Key를 입력하세요.**", icon="🗝️")
+
 with st.expander("설명 보기", expanded=False):
     st.markdown(
         "- OpenAI 모델을 사용합니다. API 키는 세션에서만 쓰이고 서버에 저장하지 않습니다.\n"
