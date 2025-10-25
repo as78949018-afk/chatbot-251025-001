@@ -354,7 +354,26 @@ with st.container():
         cols = st.columns([10,2])
         with cols[1]:
             submitted = st.form_submit_button("➜", use_container_width=True)
-    st.markdown('</div>', unsafe_allow_html=True)
+    # ----------------------------
+# 대화 입력 + 응답 (빈 흰 입력창 제거)
+# ----------------------------
+st.markdown("""
+<style>
+/* 불필요한 상단 input placeholder 제거 */
+div[data-testid="stTextInput"] > div:first-child {
+    display:none !important;
+}
+div[data-testid="stTextInput"] input {
+    border:none !important;
+    background:none !important;
+    box-shadow:none !important;
+}
+</style>
+""", unsafe_allow_html=True)
+
+# 실제 채팅 입력창
+user_input = st.chat_input("❓ 먼저 질문을 입력해 보세요. 예) '이 PDF의 핵심 요약 3줄'")
+
 
 # ----------------------------
 # 생성/응답
