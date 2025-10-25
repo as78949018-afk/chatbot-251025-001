@@ -20,7 +20,7 @@ except Exception:
 # ----------------------------
 # 기본 세팅
 # ----------------------------
-st.set_page_config(page_title="💬 Chatbot (All-in-One)", page_icon="💬", layout="wide")
+st.set_page_config(page_title="💬 나의 첫번째 Chatbot", page_icon="💬", layout="wide")
 st.title("💬 Chatbot (All-in-One)")
 
 with st.expander("설명 보기", expanded=False):
