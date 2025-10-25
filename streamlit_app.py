@@ -27,6 +27,12 @@ except Exception:
 st.set_page_config(page_title="💬 나의 첫번째 Chatbot", page_icon="💬", layout="wide")
 st.title("💬 나의 첫번째 Chatbot")
 
+with st.expander("설명 보기", expanded=False):
+    st.markdown(
+        "- OpenAI 모델을 사용합니다. API 키는 세션에서만 쓰이고 서버에 저장하지 않습니다.\n"
+        "- 배포 시 **환경변수** 또는 **Streamlit Secrets** 사용을 권장합니다.\n"
+        "- 업로드 파일(PDF/TXT)은 세션 메모리에만 저장됩니다."
+
 # ----------------------------
 # (1) API 키를 '먼저' 안전하게 준비해 둔다
 #     - 환경변수/Secrets에서 기본값을 읽고
