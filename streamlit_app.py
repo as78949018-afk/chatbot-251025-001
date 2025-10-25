@@ -271,8 +271,11 @@ if st.session_state.show_upload:
     st.markdown('<div class="card">', unsafe_allow_html=True)
 
     uploaded_files = st.file_uploader(
-        "여기에 PDF나 TXT를 올리면, 내용 기반으로 답변 품질이 향상돼요. 여러 파일 가능.",
-        type=["pdf","txt"], accept_multiple_files=True
+    "",
+    type=["pdf","txt"],
+    accept_multiple_files=True,
+    label_visibility="collapsed",
+    help="PDF나 TXT를 올리면, 내용 기반으로 답변 품질이 향상돼요. 여러 파일 가능."
     )
 
     left, right = st.columns([3,2])
