@@ -23,17 +23,6 @@ st.set_page_config(page_title="아이디어 챗봇", page_icon="🐤", layout="w
 # ================= 전역 스타일 =================
 st.markdown("""
 <style>
-/* ✅ 메인 화면에 우연히 생기는 text_input(빈 흰 박스) 숨김 */
-[data-testid="stAppViewContainer"] [data-testid="stTextInput"]{
-  display: none !important;
-}
-
-/* ✅ 사이드바의 API Key 입력창은 다시 살림 */
-[data-testid="stSidebar"] [data-testid="stTextInput"]{
-  display: block !important;
-}
-
-
 """, unsafe_allow_html=True)
 :root{
   --brand:#F4D24B;  /* 노란 포인트 */
