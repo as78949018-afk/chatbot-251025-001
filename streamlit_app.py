@@ -33,6 +33,7 @@ st.markdown("""
   display: block !important;
 }
 </style>
+<style>
 """, unsafe_allow_html=True)
 :root{
   --brand:#F4D24B;  /* 노란 포인트 */
