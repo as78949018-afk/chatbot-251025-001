@@ -5,10 +5,13 @@ import json
 import numpy as np
 
 import streamlit as st
-import openai as openai_module
 from openai import OpenAI
-# 예외 클래스(환경에 따라 다를 수 있어요. 안 맞으면 except Exception으로 통합 처리해도 됩니다)
-from openai import APIError, RateLimitError, AuthenticationError
+
+# (환경에 따라 예외 클래스가 다를 수 있어, 안전하게 Exception도 함께 처리합니다)
+try:
+    from openai import APIError, RateLimitError, AuthenticationError
+except Exception:
+    APIError = RateLimitError = AuthenticationError = Exception
 
 # PDF 텍스트 추출: PyPDF2가 없으면 TXT만 지원
 try:
@@ -71,37 +74,28 @@ with st.sidebar:
 
     st.subheader("대화 관리")
     max_turns_keep = st.slider("히스토리 보존 턴(질문/답변 쌍)", 5, 60, 30, 1)
-    reset = st.button("🔄 새 대화 시작")  # ✅ 4칸 들여쓰기 (중요)
+    reset = st.button("🔄 새 대화 시작")
     st.caption("너무 길어지면 비용↑/속도↓ → 오래된 기록은 자동 트림")
 
 # ----------------------------
 # reset: 즉시 초기화 + 재실행
 # ----------------------------
 if reset:
-    # 필요한 키만 안전하게 초기화(전체 clear 도 가능: st.session_state.clear())
-    st.session_state.messages = []
-    st.session_state.has_system = False
-    st.session_state.rag_ready = False
-    st.session_state.rag_chunks = []
-    st.session_state.rag_embeds = None
-    st.rerun()  # ✅ 즉시 새로고침
+    st.session_state.clear()  # 모두 초기화(필요키만 초기화하려면 개별 할당해도 OK)
+    st.rerun()
 
 # ----------------------------
 # 세션 상태 초기화
 # ----------------------------
-if "messages" not in st.session_state:  # ✅ or reset 제거 (reset은 위에서 처리)
+if "messages" not in st.session_state:
     st.session_state.messages = []  # [{"role": "system"/"user"/"assistant", "content": "..."}]
     st.session_state.has_system = False
 
 # 간단 RAG용 세션 상태
-if "rag_ready" not in st.session_state:
-    st.session_state.rag_ready = False
-if "rag_chunks" not in st.session_state:
-    st.session_state.rag_chunks = []
-if "rag_embeds" not in st.session_state:
-    st.session_state.rag_embeds = None  # np.array shape (N, D)
-if "rag_model" not in st.session_state:
-    st.session_state.rag_model = "text-embedding-3-small"
+st.session_state.setdefault("rag_ready", False)
+st.session_state.setdefault("rag_chunks", [])
+st.session_state.setdefault("rag_embeds", None)  # np.array shape (N, D)
+st.session_state.setdefault("rag_model", "text-embedding-3-small")
 
 # ----------------------------
 # 도우미 함수
@@ -112,7 +106,6 @@ def ensure_system_message(prompt_text: str):
         st.session_state.messages.insert(0, {"role": "system", "content": prompt_text})
         st.session_state.has_system = True
     else:
-        # 이미 system이 있다면 내용 업데이트
         st.session_state.messages[0]["content"] = prompt_text
 
 def trim_history(max_turns: int):
@@ -177,7 +170,6 @@ def retrieve_context(query: str, top_k: int = 4) -> str:
     if not (st.session_state.rag_ready and st.session_state.rag_embeds is not None):
         return ""
     try:
-        client = OpenAI(api_key=openai_api_key)
         q_embed = client.embeddings.create(
             model=st.session_state.rag_model, input=[query]
         ).data[0].embedding
@@ -185,8 +177,7 @@ def retrieve_context(query: str, top_k: int = 4) -> str:
         sims = cosine_sim(q_vec, st.session_state.rag_embeds).flatten()  # (N,)
         idx = np.argsort(-sims)[:top_k]
         selected = [st.session_state.rag_chunks[i] for i in idx]
-        context = "\n\n".join(selected)
-        return context
+        return "\n\n".join(selected)
     except Exception:
         return ""
 
@@ -205,13 +196,13 @@ def export_chat_as_json(messages: list[dict]) -> bytes:
     return json.dumps(payload, ensure_ascii=False, indent=2).encode("utf-8")
 
 # ----------------------------
-# API 키 체크
+# API 키 체크 (미리보기 모드 지원)
 # ----------------------------
-if not openai_api_key:
-    st.info("좌측 사이드바에서 OpenAI API Key를 입력하거나 환경변수/Secrets를 설정하세요. 🔐", icon="🗝️")
-    st.stop()
+no_key = not openai_api_key
+if no_key:
+    st.warning("API 키가 없어 **미리보기 모드**로 동작합니다. 응답/임베딩은 생성되지 않습니다. 🔒")
 
-client = OpenAI(api_key=openai_api_key)
+client = OpenAI(api_key=openai_api_key) if not no_key else None
 
 # ----------------------------
 # 파일 업로드 → RAG 인덱스 만들기
@@ -223,40 +214,81 @@ uploaded_files = st.file_uploader(
     accept_multiple_files=True
 )
 
-build_btn_cols = st.columns([1, 1, 6])
-with build_btn_cols[0]:
-    use_rag = st.toggle("RAG 사용", value=False, help="켜면 업로드한 파일 내용이 답변 컨텍스트로 사용됩니다.")
-with build_btn_cols[1]:
-    rebuild = st.button("📚 인덱스 생성/재생성")
+# --- 카드/툴바 스타일(CSS) ---
+st.markdown("""
+<style>
+.rag-card {
+  margin: 8px 0 16px;
+  padding: 14px 16px;
+  border: 1px solid rgba(0,0,0,.08);
+  border-radius: 14px;
+  background: var(--background-color, #fff);
+  box-shadow: 0 4px 14px rgba(0,0,0,.04);
+}
+.rag-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: nowrap;
+}
+.rag-toolbar .right { margin-left: auto; display: flex; align-items: center; }
+.rag-toolbar .nowrap { white-space: nowrap; }
+@media (max-width: 640px) {
+  .rag-toolbar { flex-wrap: wrap; }
+  .rag-toolbar .right { margin-left: 0; width: 100%; justify-content: flex-end; }
+}
+</style>
+""", unsafe_allow_html=True)
 
+# --- 한 줄·양끝 정렬 툴바 (토글 왼쪽 / 버튼 오른쪽) ---
+st.markdown('<div class="rag-card"><div class="rag-toolbar">', unsafe_allow_html=True)
+
+# 왼쪽: 토글
+use_rag = st.toggle(
+    "RAG 사용",
+    value=False,
+    help="켜면 업로드한 파일 내용이 답변 컨텍스트로 사용됩니다."
+)
+st.markdown('<span class="nowrap"></span>', unsafe_allow_html=True)
+
+# 오른쪽: 버튼
+st.markdown('<div class="right">', unsafe_allow_html=True)
+rebuild = st.button("📚 인덱스 생성/재생성")
+st.markdown('</div></div></div>', unsafe_allow_html=True)
+
+# --- 인덱스 생성 ---
 if rebuild and uploaded_files:
-    all_text = []
-    for f in uploaded_files:
-        if f.type == "text/plain" or f.name.lower().endswith(".txt"):
-            text = f.read().decode("utf-8", errors="ignore")
-        elif f.type == "application/pdf" or f.name.lower().endswith(".pdf"):
-            if not HAS_PYPDF2:
-                st.warning(f"'{f.name}' → PyPDF2 미설치로 PDF 추출 불가(TXT만 지원).")
-                text = ""
-            else:
-                text = extract_text_from_pdf(f.read())
-        else:
-            text = ""
-        if text:
-            all_text.append(text)
-
-    full_text = "\n\n".join(all_text)
-    chunks = chunk_text(full_text, chunk_size=900, overlap=200)
-
-    if not chunks:
-        st.warning("추출 가능한 텍스트가 없습니다. 스캔 PDF는 텍스트가 없을 수 있어요.")
+    if no_key:
+        st.error("임베딩 생성에는 API 키가 필요합니다. 🔑")
     else:
-        with st.spinner("임베딩 생성 중..."):
-            vecs = build_embeddings(client, chunks, st.session_state.rag_model)
-        st.session_state.rag_chunks = chunks
-        st.session_state.rag_embeds = vecs
-        st.session_state.rag_ready = True
-        st.success(f"인덱스 생성 완료! 청크 {len(chunks)}개")
+        all_text = []
+        for f in uploaded_files:
+            if f.type == "text/plain" or f.name.lower().endswith(".txt"):
+                text = f.read().decode("utf-8", errors="ignore")
+            elif f.type == "application/pdf" or f.name.lower().endswith(".pdf"):
+                if not HAS_PYPDF2:
+                    st.warning(f"'{f.name}' → PyPDF2 미설치로 PDF 추출 불가(TXT만 지원).")
+                    text = ""
+                else:
+                    text = extract_text_from_pdf(f.read())
+            else:
+                text = ""
+            if text:
+                all_text.append(text)
+
+        full_text = "\n\n".join(all_text)
+        chunks = chunk_text(full_text, chunk_size=900, overlap=200)
+
+        if not chunks:
+            st.warning("추출 가능한 텍스트가 없습니다. 스캔 PDF는 텍스트가 없을 수 있어요.")
+        else:
+            with st.spinner("임베딩 생성 중..."):
+                vecs = build_embeddings(client, chunks, st.session_state.rag_model)
+            st.session_state.rag_chunks = chunks
+            st.session_state.rag_embeds = vecs
+            st.session_state.rag_ready = True
+            st.success(f"인덱스 생성 완료! 청크 {len(chunks)}개")
 
 # ----------------------------
 # 기존 히스토리 렌더링
@@ -271,16 +303,14 @@ for m in st.session_state.messages:
 # ----------------------------
 user_input = st.chat_input("무엇을 도와드릴까요? (Shift+Enter 줄바꿈)")
 if user_input:
-    # 시스템 프롬프트 보장 & 히스토리 트림
     ensure_system_message(system_prompt)
     trim_history(max_turns_keep)
 
-    # 사용자 발화 표시/저장
     st.session_state.messages.append({"role": "user", "content": user_input})
     with st.chat_message("user"):
         st.markdown(user_input)
 
-    # RAG 컨텍스트 구성
+    # RAG 컨텍스트
     additional_context = ""
     if use_rag:
         ctx = retrieve_context(user_input, top_k=4)
@@ -291,49 +321,48 @@ if user_input:
                 f"=== BEGIN CONTEXT ===\n{ctx}\n=== END CONTEXT ==="
             )
 
-    # 모델 호출
     try:
-        # 메시지 구성 (RAG 컨텍스트는 추가 user 메시지로 전달)
         call_messages = list(st.session_state.messages)
         if additional_context:
             call_messages.append({"role": "user", "content": additional_context})
 
-        if stream_enable:
-            # 스트리밍
+        if no_key:
             with st.chat_message("assistant"):
-                stream = client.chat.completions.create(
-                    model=model,
-                    messages=[{"role": m["role"], "content": m["content"]} for m in call_messages],
-                    temperature=temperature,
-                    max_tokens=max_output_tokens,
-                    stream=True,
-                )
-                response_text = st.write_stream(stream)
-            st.session_state.messages.append({"role": "assistant", "content": response_text})
+                st.info("🔒 미리보기 모드: API 키를 입력하면 실제 답변이 생성됩니다.")
+            st.session_state.messages.append(
+                {"role": "assistant", "content": "🔒 미리보기 모드: 키 입력 시 답변 생성"}
+            )
         else:
-            # 비스트리밍(usage 표시)
-            with st.chat_message("assistant"):
-                resp = client.chat.completions.create(
-                    model=model,
-                    messages=[{"role": m["role"], "content": m["content"]} for m in call_messages],
-                    temperature=temperature,
-                    max_tokens=max_output_tokens,
-                    stream=False,
-                )
-                response_text = resp.choices[0].message.content
-                st.markdown(response_text)
-                if getattr(resp, "usage", None):
-                    in_tok = resp.usage.prompt_tokens
-                    out_tok = resp.usage.completion_tokens
-                    tot_tok = resp.usage.total_tokens
-                    st.caption(f"🧮 tokens — prompt: {in_tok}, completion: {out_tok}, total: {tot_tok}")
-            st.session_state.messages.append({"role": "assistant", "content": response_text})
+            if stream_enable:
+                with st.chat_message("assistant"):
+                    stream = client.chat.completions.create(
+                        model=model,
+                        messages=[{"role": m["role"], "content": m["content"]} for m in call_messages],
+                        temperature=temperature,
+                        max_tokens=max_output_tokens,
+                        stream=True,
+                    )
+                    response_text = st.write_stream(stream)
+                st.session_state.messages.append({"role": "assistant", "content": response_text})
+            else:
+                with st.chat_message("assistant"):
+                    resp = client.chat.completions.create(
+                        model=model,
+                        messages=[{"role": m["role"], "content": m["content"]} for m in call_messages],
+                        temperature=temperature,
+                        max_tokens=max_output_tokens,
+                        stream=False,
+                    )
+                    response_text = resp.choices[0].message.content
+                    st.markdown(response_text)
+                    if getattr(resp, "usage", None):
+                        in_tok = resp.usage.prompt_tokens
+                        out_tok = resp.usage.completion_tokens
+                        tot_tok = resp.usage.total_tokens
+                        st.caption(f"🧮 tokens — prompt: {in_tok}, completion: {out_tok}, total: {tot_tok}")
+                st.session_state.messages.append({"role": "assistant", "content": response_text})
 
-    except (AuthenticationError, openai_module.AuthenticationError):
-        st.error("API 키 인증 오류입니다. 키를 확인해주세요. 🔑")
-    except (RateLimitError, openai_module.RateLimitError):
-        st.warning("요청이 많아 잠시 대기해야 합니다. ⏳")
-    except (APIError, openai_module.APIError) as e:
+    except (AuthenticationError, RateLimitError, APIError) as e:
         st.error(f"OpenAI API 오류: {e}")
     except Exception as e:
         st.exception(e)
@@ -363,6 +392,6 @@ with col_json:
 
 # 푸터 도움말
 st.caption(
-    "Tip: 스트리밍을 끄면(사이드바) 응답 후 사용량(토큰)을 보여줍니다. "
-    "PDF 텍스트 추출은 문서 유형에 따라 일부 제한될 수 있어요."
+    "Tip: 스트리밍을 끄면 응답 후 사용량(토큰)을 볼 수 있어요. "
+    "PDF 텍스트 추출은 문서 유형에 따라 제한될 수 있습니다."
 )
