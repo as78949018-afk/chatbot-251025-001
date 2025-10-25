@@ -69,6 +69,13 @@ openai_api_key = st.session_state.openai_api_key
 no_key = not openai_api_key
 client = OpenAI(api_key=openai_api_key) if not no_key else None
 
+# (2) 설명 박스 👇 여기에 추가
+with st.expander("설명 보기", expanded=False):
+    st.markdown(
+        "- OpenAI 모델을 사용합니다. API 키는 세션에서만 쓰이고 서버에 저장하지 않습니다.\n"
+        "- 배포 시 **환경변수** 또는 **Streamlit Secrets** 사용을 권장합니다.\n"
+        "- 업로드 파일(PDF/TXT)은 세션 메모리에만 저장됩니다."
+    )
 # ----------------------------
 # 사이드바: 설정
 # ----------------------------
