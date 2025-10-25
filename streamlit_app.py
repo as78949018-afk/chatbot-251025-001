@@ -1,4 +1,6 @@
-# app.py
+# =========================
+# app.py (상단 ~ 수정 구간 끝)
+# =========================
 import os
 import io
 import json
@@ -6,8 +8,7 @@ import numpy as np
 
 import streamlit as st
 from openai import OpenAI
-
-# (환경에 따라 예외 클래스가 다를 수 있어, 안전하게 Exception도 함께 처리합니다)
+# (환경에 따라 예외 클래스 임포트가 다를 수 있어요)
 try:
     from openai import APIError, RateLimitError, AuthenticationError
 except Exception:
@@ -26,17 +27,46 @@ except Exception:
 st.set_page_config(page_title="💬 나의 첫번째 Chatbot", page_icon="💬", layout="wide")
 st.title("💬 나의 첫번째 Chatbot")
 
-if not openai_api_key:
+# ----------------------------
+# (1) API 키를 '먼저' 안전하게 준비해 둔다
+#     - 환경변수/Secrets에서 기본값을 읽고
+#     - 세션 상태에 키를 만들어 둬서 아래에서 바로 참조 가능하게
+# ----------------------------
+default_key = os.environ.get("OPENAI_API_KEY") or st.secrets.get("OPENAI_API_KEY", None)
+if "openai_api_key" not in st.session_state:
+    st.session_state.openai_api_key = default_key  # 없으면 None이 들어감
+
+# ----------------------------
+# (2) 메인 화면 상단에 안내 문구(키 없을 때만)
+#     ※ 여기서는 st.session_state.openai_api_key를 사용 (NameError 방지)
+# ----------------------------
+if not st.session_state.openai_api_key:
     st.info("🔑 **사이드바에 OpenAI API Key를 입력하세요.**", icon="🗝️")
 
-with st.expander("설명 보기", expanded=False):
-    st.markdown(
-        "- OpenAI 모델을 사용합니다. API 키는 세션에서만 쓰이고 서버에 저장하지 않습니다.\n"
-        "- 배포 시 **환경변수** 또는 **Streamlit Secrets** 사용을 권장합니다.\n"
-        "- 업로드 파일(PDF/TXT)은 세션 메모리에만 저장됩니다."
+# ----------------------------
+# (3) 사이드바: 이제 키 입력을 받으며 최종 확정
+# ----------------------------
+with st.sidebar:
+    st.header("설정")
+    st.session_state.openai_api_key = st.text_input(
+        "OpenAI API Key",
+        type="password",
+        value=st.session_state.openai_api_key or "",
+        help="환경변수/Secrets가 없으면 여기에 입력하세요",
     )
 
+    # 그 외 사이드바 옵션(예: 모델, 토큰 등)을 이어서 배치해도 됨
+    model = st.selectbox("Model", ["gpt-4o", "gpt-4o-mini"], index=0)
+    temperature = st.slider("Temperature(창의성)", 0.0, 1.2, 0.6, 0.1)
+    max_output_tokens = st.slider("Max output tokens(응답 길이)", 64, 4096, 960, 64)
+    stream_enable = st.toggle("실시간 스트리밍", value=True)
 
+# ----------------------------
+# (4) 이후에는 이 변수만 쓰면 됨
+# ----------------------------
+openai_api_key = st.session_state.openai_api_key
+no_key = not openai_api_key
+client = OpenAI(api_key=openai_api_key) if not no_key else None
 
 # ----------------------------
 # 사이드바: 설정
