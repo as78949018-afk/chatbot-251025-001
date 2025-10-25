@@ -38,7 +38,10 @@ html, body, [data-testid="stAppViewContainer"]{
   color:var(--ink);
   font-family: Pretendard, Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans KR", "Malgun Gothic", sans-serif;
 }
-.block-container{ padding-top: 1rem; padding-bottom: 2.5rem; }
+.block-container{
+  padding-top: 6rem !important;   /* ← 상단 여백 크게 */
+  padding-bottom: 2.5rem !important;
+}
 
 /* 사이드바 톤 */
 [data-testid="stSidebar"]{
