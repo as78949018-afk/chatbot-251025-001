@@ -68,7 +68,16 @@ with st.sidebar:
 
     st.subheader("대화 관리")
     max_turns_keep = st.slider("히스토리 보존 턴(질문/답변 쌍)", 5, 60, 30, 1)
-    reset = st.button("🔄 새 대화 시작")
+   reset = st.button("🔄 새 대화 시작")
+
+if reset:
+    st.session_state.messages = []
+    st.session_state.has_system = False
+    st.session_state.rag_ready = False
+    st.session_state.rag_chunks = []
+    st.session_state.rag_embeds = None
+    st.rerun()  # ✅ 이 한 줄이 핵심!
+
     st.caption("너무 길어지면 비용↑/속도↓ → 오래된 기록은 자동 트림")
 
 # ----------------------------
