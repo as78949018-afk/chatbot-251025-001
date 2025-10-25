@@ -2,13 +2,13 @@
 import os
 import io
 import json
-import time
-import math
 import numpy as np
 
 import streamlit as st
 import openai as openai_module
 from openai import OpenAI
+# 예외 클래스(환경에 따라 다를 수 있어요. 안 맞으면 except Exception으로 통합 처리해도 됩니다)
+from openai import APIError, RateLimitError, AuthenticationError
 
 # PDF 텍스트 추출: PyPDF2가 없으면 TXT만 지원
 try:
@@ -36,7 +36,10 @@ with st.expander("설명 보기", expanded=False):
 with st.sidebar:
     st.header("⚙️ 설정")
     default_key = os.environ.get("OPENAI_API_KEY") or st.secrets.get("OPENAI_API_KEY")
-    openai_api_key = default_key or st.text_input("OpenAI API Key", type="password", help="환경변수/Secrets가 없으면 여기에 입력")
+    openai_api_key = default_key or st.text_input(
+        "OpenAI API Key", type="password", help="환경변수/Secrets가 없으면 여기에 입력"
+    )
+
     model = st.selectbox(
         "Model",
         ["gpt-4o", "gpt-4o-mini"],
@@ -68,22 +71,25 @@ with st.sidebar:
 
     st.subheader("대화 관리")
     max_turns_keep = st.slider("히스토리 보존 턴(질문/답변 쌍)", 5, 60, 30, 1)
-   reset = st.button("🔄 새 대화 시작")
+    reset = st.button("🔄 새 대화 시작")  # ✅ 4칸 들여쓰기 (중요)
+    st.caption("너무 길어지면 비용↑/속도↓ → 오래된 기록은 자동 트림")
 
+# ----------------------------
+# reset: 즉시 초기화 + 재실행
+# ----------------------------
 if reset:
+    # 필요한 키만 안전하게 초기화(전체 clear 도 가능: st.session_state.clear())
     st.session_state.messages = []
     st.session_state.has_system = False
     st.session_state.rag_ready = False
     st.session_state.rag_chunks = []
     st.session_state.rag_embeds = None
-    st.rerun()  # ✅ 이 한 줄이 핵심!
-
-    st.caption("너무 길어지면 비용↑/속도↓ → 오래된 기록은 자동 트림")
+    st.rerun()  # ✅ 즉시 새로고침
 
 # ----------------------------
 # 세션 상태 초기화
 # ----------------------------
-if "messages" not in st.session_state or reset:
+if "messages" not in st.session_state:  # ✅ or reset 제거 (reset은 위에서 처리)
     st.session_state.messages = []  # [{"role": "system"/"user"/"assistant", "content": "..."}]
     st.session_state.has_system = False
 
@@ -154,7 +160,6 @@ def chunk_text(text: str, chunk_size: int = 900, overlap: int = 200):
 
 def cosine_sim(A: np.ndarray, B: np.ndarray):
     """A: (n,d), B:(m,d) -> (n,m) 코사인 유사도"""
-    # 정규화
     A_norm = A / (np.linalg.norm(A, axis=1, keepdims=True) + 1e-12)
     B_norm = B / (np.linalg.norm(B, axis=1, keepdims=True) + 1e-12)
     return A_norm @ B_norm.T
@@ -163,10 +168,7 @@ def build_embeddings(client: OpenAI, chunks: list[str], embed_model: str) -> np.
     """OpenAI 임베딩 생성 -> np.array (N, D)"""
     if not chunks:
         return np.zeros((0, 1536), dtype=np.float32)
-    resp = client.embeddings.create(
-        model=embed_model,
-        input=chunks
-    )
+    resp = client.embeddings.create(model=embed_model, input=chunks)
     vecs = [d.embedding for d in resp.data]
     return np.array(vecs, dtype=np.float32)
 
@@ -199,7 +201,6 @@ def export_chat_as_txt(messages: list[dict]) -> bytes:
     return "\n".join(lines).encode("utf-8")
 
 def export_chat_as_json(messages: list[dict]) -> bytes:
-    # system도 함께 내보내고 싶으면 필터 제거
     payload = [m for m in messages if m.get("role") in ("user", "assistant")]
     return json.dumps(payload, ensure_ascii=False, indent=2).encode("utf-8")
 
@@ -328,11 +329,11 @@ if user_input:
                     st.caption(f"🧮 tokens — prompt: {in_tok}, completion: {out_tok}, total: {tot_tok}")
             st.session_state.messages.append({"role": "assistant", "content": response_text})
 
-    except openai_module.AuthenticationError:
+    except (AuthenticationError, openai_module.AuthenticationError):
         st.error("API 키 인증 오류입니다. 키를 확인해주세요. 🔑")
-    except openai_module.RateLimitError:
+    except (RateLimitError, openai_module.RateLimitError):
         st.warning("요청이 많아 잠시 대기해야 합니다. ⏳")
-    except openai_module.APIError as e:
+    except (APIError, openai_module.APIError) as e:
         st.error(f"OpenAI API 오류: {e}")
     except Exception as e:
         st.exception(e)
