@@ -32,8 +32,8 @@ st.markdown("""
 [data-testid="stSidebar"] [data-testid="stTextInput"]{
   display: block !important;
 }
-</style>
-<style>
+
+
 """, unsafe_allow_html=True)
 :root{
   --brand:#F4D24B;  /* 노란 포인트 */
