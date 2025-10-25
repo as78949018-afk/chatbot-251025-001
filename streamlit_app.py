@@ -23,7 +23,6 @@ st.set_page_config(page_title="아이디어 챗봇", page_icon="🐤", layout="w
 # ================= 전역 스타일 =================
 st.markdown("""
 <style>
-""", unsafe_allow_html=True)
 :root{
   --brand:#F4D24B;  /* 노란 포인트 */
   --ink:#222; --ink-weak:#5f6368;
